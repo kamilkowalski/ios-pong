@@ -15,6 +15,7 @@
 @implementation ViewController
 
 // Game settings
+BOOL isPlaying;
 UIColor* backgroundColor;
 UIColor* boardColor;
 UIColor* ballColor;
@@ -23,6 +24,7 @@ CGRect ballFrame;
 CGFloat ballRadius;
 CGFloat boardThickness;
 CGFloat boardWidth;
+CGFloat boardHeight;
 
 // Game views
 UIView* board;
@@ -35,19 +37,26 @@ UICollisionBehavior* collisions;
 UIDynamicItemBehavior* ballDynamics;
 UIDynamicItemBehavior* boardDynamics;
 UIPushBehavior* initialPush;
+UIPanGestureRecognizer* gestureRecognizer;
+UITapGestureRecognizer* tapRecognizer;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
     [self initSettings];
     [self initViews];
     [self initAnimations];
+    [self initGestures];
+    [self play];
 }
 
 - (void)initSettings {
+    isPlaying = NO;
+    
     backgroundColor = [self getBackgroundColor];
     
     boardWidth = 100;
     boardThickness = 20;
+    boardHeight = 150;
     boardFrame = [self getBoardFrame];
     boardColor = [self getBoardColor];
 
@@ -85,6 +94,7 @@ UIPushBehavior* initialPush;
     [ballDynamics setResistance:0];
     
     [boardDynamics setDensity:1000];
+    [boardDynamics setAllowsRotation:NO];
     
     [initialPush setAngle:0.4 magnitude:0.2];
     
@@ -97,29 +107,88 @@ UIPushBehavior* initialPush;
     [collisions addBoundaryWithIdentifier:@"left" fromPoint:topLeft toPoint:bottomLeft];
     [collisions addBoundaryWithIdentifier:@"top" fromPoint:topLeft toPoint:topRight];
     [collisions addBoundaryWithIdentifier:@"right" fromPoint:topRight toPoint:bottomRight];
+    [collisions addBoundaryWithIdentifier:@"bottom" fromPoint:bottomLeft toPoint:bottomRight];
     
+    [collisions setCollisionDelegate:self];
+}
+
+- (void)initGestures {
+    gestureRecognizer = [[UIPanGestureRecognizer alloc] initWithTarget:self
+                                                        action:@selector(handleGesture:)];
+    tapRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
+    
+    [gestureRecognizer setDelegate:self];
+    [tapRecognizer setDelegate:self];
+    
+    [self.view addGestureRecognizer:gestureRecognizer];
+    [self.view addGestureRecognizer:tapRecognizer];
+}
+
+- (void)play {
     [animator addBehavior:initialPush];
     [animator addBehavior:collisions];
     [animator addBehavior:ballDynamics];
     [animator addBehavior:boardDynamics];
+    isPlaying = YES;
+}
+
+- (void)pause {
+    [animator removeAllBehaviors];
+    isPlaying = NO;
+}
+
+- (void)collisionBehavior:(UICollisionBehavior *)behavior beganContactForItem:(id<UIDynamicItem>)item withBoundaryIdentifier:(id<NSCopying>)identifier atPoint:(CGPoint)p {
+    NSString* boundary = (NSString*)identifier;
+    
+    if([boundary isEqualToString:@"bottom"]) {
+        [self pause];
+    }
+}
+
+- (void)handleGesture:(UIPanGestureRecognizer *)gestureRecognizer {
+    CGFloat x = [gestureRecognizer locationInView:self.view].x;
+    [UIView animateWithDuration:0.4 animations:^{
+        board.center = [self getBoardCenterForX:x];
+    }];
+    [animator updateItemUsingCurrentState:board];
+}
+
+- (void)handleTap:(UITapGestureRecognizer*)tapRecognizer {
+    if(!isPlaying) {
+        CGPoint ballOrigin = [self getBallOrigin];
+        [ball setCenter:CGPointMake(ballOrigin.x + ballRadius, ballOrigin.y + ballRadius)];
+        [self play];
+    }
 }
 
 - (CGRect)getBoardFrame {
     return CGRectMake(
         self.view.frame.size.width / 2 - boardWidth / 2,
-        self.view.frame.size.height - boardThickness,
+        self.view.frame.size.height - boardThickness - boardHeight,
         boardWidth,
         boardThickness
     );
 }
 
+- (CGPoint)getBoardCenterForX:(CGFloat)x {
+    if(x < boardWidth / 2) x = boardWidth / 2;
+    if(x > self.view.frame.size.width - boardWidth / 2) x = self.view.frame.size.width - boardWidth / 2;
+    return CGPointMake(x, self.view.frame.size.height - boardHeight - boardThickness / 2);
+}
+
 - (CGRect)getBallFrame {
+    CGPoint ballOrigin = [self getBallOrigin];
     return CGRectMake(
-        self.view.frame.size.width / 2 - ballRadius,
-        self.view.frame.size.height / 2 - ballRadius,
+        ballOrigin.x,
+        ballOrigin.y,
         ballRadius * 2,
         ballRadius * 2
     );
+}
+
+- (CGPoint)getBallOrigin {
+    return CGPointMake(self.view.frame.size.width / 2 - ballRadius,
+                       self.view.frame.size.height / 2 - ballRadius);
 }
 
 - (UIColor*)getBackgroundColor {
